@@ -1,17 +1,52 @@
 // # Mail API
 // API for sending Mail
-var _            = require('lodash').runInContext(),
-    Promise      = require('bluebird'),
-    config       = require('../config'),
-    canThis      = require('../permissions').canThis,
-    errors       = require('../errors'),
-    mailer       = require('../mail'),
-    Models       = require('../models'),
-    path         = require('path'),
-    fs           = require('fs'),
-    templatesDir = path.resolve(__dirname, '..', 'mail', 'templates'),
-    htmlToText   = require('html-to-text'),
+var _             = require('lodash').runInContext(),
+    Promise       = require('bluebird'),
+    pipeline      = require('../utils/pipeline'),
+    config        = require('../config'),
+    errors        = require('../errors'),
+    GhostMail     = require('../mail'),
+    Models        = require('../models'),
+    utils         = require('./utils'),
+    notifications = require('./notifications'),
+    path          = require('path'),
+    fs            = require('fs'),
+    templatesDir  = path.resolve(__dirname, '..', 'mail', 'templates'),
+    htmlToText    = require('html-to-text'),
+    readFile      = Promise.promisify(fs.readFile),
+    docName       = 'mail',
+    i18n          = require('../i18n'),
+    mode          = process.env.NODE_ENV,
+    testing       = mode !== 'production' && mode !== 'development',
+    mailer,
     mail;
+
+_.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
+
+/**
+ * Send mail helper
+ */
+
+function sendMail(object) {
+    if (!(mailer instanceof GhostMail) || testing) {
+        mailer = new GhostMail();
+    }
+
+    return mailer.send(object.mail[0].message).catch(function (err) {
+        if (mailer.state.usingDirect) {
+            notifications.add({notifications: [{
+                type: 'warn',
+                message: [
+                    i18n.t('warnings.index.unableToSendEmail'),
+                    i18n.t('common.seeLinkForInstructions',
+                    {link: '<a href=\'http://support.ghost.org/mail\' target=\'_blank\'>http://support.ghost.org/mail</a>'})
+                ].join(' ')
+            }]}, {context: {internal: true}});
+        }
+
+        return Promise.reject(new errors.EmailError(err.message));
+    });
+}
 
 /**
  * ## Mail API Methods
@@ -30,23 +65,39 @@ mail = {
      * @returns {Promise}
      */
     send: function (object, options) {
-        return canThis(options.context).send.mail().then(function () {
-            return mailer.send(object.mail[0].message)
-                .then(function (data) {
-                    delete object.mail[0].options;
-                    // Sendmail returns extra details we don't need and that don't convert to JSON
-                    delete object.mail[0].message.transport;
-                    object.mail[0].status = {
-                        message: data.message
-                    };
-                    return object;
-                })
-                .catch(function (error) {
-                    return Promise.reject(new errors.EmailError(error.message));
-                });
-        }, function () {
-            return Promise.reject(new errors.NoPermissionError('You do not have permission to send mail.'));
-        });
+        var tasks;
+
+        /**
+         * ### Format Response
+         * @returns {Mail} mail
+         */
+
+        function formatResponse(data) {
+            delete object.mail[0].options;
+            // Sendmail returns extra details we don't need and that don't convert to JSON
+            delete object.mail[0].message.transport;
+            object.mail[0].status = {
+                message: data.message
+            };
+
+            return object;
+        }
+
+        /**
+         * ### Send Mail
+         */
+
+        function send() {
+            return sendMail(object, options);
+        }
+
+        tasks = [
+                utils.handlePermissions(docName, 'send'),
+                send,
+                formatResponse
+        ];
+
+        return pipeline(tasks, options || {});
     },
 
     /**
@@ -58,21 +109,52 @@ mail = {
      * @returns {Promise}
      */
     sendTest: function (options) {
-        return Models.User.findOne({id: options.context.user}).then(function (result) {
-            return mail.generateContent({template: 'test'}).then(function (emailContent) {
-                var payload = {mail: [{
-                    message: {
-                        to: result.get('email'),
-                        subject: 'Test Ghost Email',
-                        html: emailContent.html,
-                        text: emailContent.text
-                    }
-                }]};
-                return mail.send(payload, options);
+        var tasks;
+
+        /**
+         * ### Model Query
+         */
+
+        function modelQuery() {
+            return Models.User.findOne({id: options.context.user});
+        }
+
+        /**
+         * ### Generate content
+         */
+
+        function generateContent(result) {
+            return mail.generateContent({template: 'test'}).then(function (content) {
+                var payload = {
+                    mail: [{
+                        message: {
+                            to: result.get('email'),
+                            subject: i18n.t('common.api.mail.testGhostEmail'),
+                            html: content.html,
+                            text: content.text
+                        }
+                    }]
+                };
+
+                return payload;
             });
-        }, function () {
-            return Promise.reject(new errors.NotFoundError('Could not find the current user'));
-        });
+        }
+
+        /**
+         * ### Send mail
+         */
+
+        function send(payload) {
+            return sendMail(payload, options);
+        }
+
+        tasks = [
+            modelQuery,
+            generateContent,
+            send
+        ];
+
+        return pipeline(tasks);
     },
 
     /**
@@ -84,32 +166,32 @@ mail = {
      * @returns {*}
      */
     generateContent: function (options) {
-        var defaultData = {
-                siteUrl: config.forceAdminSSL ? (config.urlSSL || config.url) : config.url
-            },
-            emailData = _.defaults(defaultData, options.data);
+        var defaults,
+            data;
 
-        _.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
+        defaults = {
+            siteUrl: config.forceAdminSSL ? (config.urlSSL || config.url) : config.url
+        };
+
+        data = _.defaults(defaults, options.data);
 
         // read the proper email body template
-        return new Promise(function (resolve, reject) {
-            fs.readFile(templatesDir + '/' + options.template + '.html', {encoding: 'utf8'}, function (err, fileContent) {
-                if (err) {
-                    reject(err);
-                }
+        return readFile(path.join(templatesDir, options.template + '.html'), 'utf8').then(function (content) {
+            var compiled,
+                htmlContent,
+                textContent;
 
-                // insert user-specific data into the email
-                var compiled = _.template(fileContent),
-                    htmlContent = compiled(emailData),
-                    textContent;
+            // insert user-specific data into the email
+            compiled = _.template(content);
+            htmlContent = compiled(data);
 
-                // generate a plain-text version of the same email
-                textContent = htmlToText.fromString(htmlContent);
-                resolve({
-                    html: htmlContent,
-                    text: textContent
-                });
-            });
+            // generate a plain-text version of the same email
+            textContent = htmlToText.fromString(htmlContent);
+
+            return {
+                html: htmlContent,
+                text: textContent
+            };
         });
     }
 };

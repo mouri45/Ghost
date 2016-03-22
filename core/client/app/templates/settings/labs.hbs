@@ -28,7 +28,7 @@
             <fieldset>
                 <div class="form-group">
                     <label>Delete all Content</label>
-                    <button type="button" class="btn btn-red js-delete" {{action "openModal" "deleteAll"}}>Delete</button>
+                    <button type="button" class="btn btn-red js-delete" {{action "toggleDeleteAllModal"}}>Delete</button>
                     <p>Delete all posts and tags from the database.</p>
                 </div>
             </fieldset>
@@ -47,13 +47,17 @@
             <fieldset>
                 <div class="form-group for-checkbox">
                     <h3>Enable Beta Features</h3>
-                    <label class="checkbox" for="labs-publicAPI">
-                        {{input id="labs-publicAPI" name="labs[publicAPI]" type="checkbox" checked=usePublicAPI}}
-                        <span class="input-toggle-component"></span>
-                        <p>Public API - For full instructions, read the <a href="http://support.ghost.org/public-api-beta/">developer guide</a>.</p>
-                    </label>
+                    {{#gh-feature-flag "publicAPI"}}
+                        Public API - For full instructions, read the <a href="http://support.ghost.org/public-api-beta/">developer guide</a>.
+                    {{/gh-feature-flag}}
                 </div>
             </fieldset>
         </form>
     </section>
 </section>
+
+{{#if showDeleteAllModal}}
+    {{gh-fullscreen-modal "delete-all"
+                          close=(action "toggleDeleteAllModal")
+                          modifier="action wide"}}
+{{/if}}

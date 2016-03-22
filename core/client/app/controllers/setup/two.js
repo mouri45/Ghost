@@ -1,8 +1,12 @@
 import Ember from 'ember';
-import {request as ajax} from 'ic-ajax';
 import ValidationEngine from 'ghost/mixins/validation-engine';
 
-const {Controller, RSVP, inject} = Ember;
+const {
+    Controller,
+    RSVP: {Promise},
+    inject: {service, controller},
+    isArray
+} = Ember;
 
 export default Controller.extend(ValidationEngine, {
     size: 90,
@@ -15,11 +19,12 @@ export default Controller.extend(ValidationEngine, {
     submitting: false,
     flowErrors: '',
 
-    ghostPaths: inject.service('ghost-paths'),
-    notifications: inject.service(),
-    application: inject.controller(),
-    config: inject.service(),
-    session: inject.service(),
+    ghostPaths: service(),
+    notifications: service(),
+    application: controller(),
+    config: service(),
+    session: service(),
+    ajax: service(),
 
     // ValidationEngine settings
     validationType: 'setup',
@@ -32,14 +37,13 @@ export default Controller.extend(ValidationEngine, {
     sendImage(user) {
         let image = this.get('image');
 
-        return new RSVP.Promise((resolve, reject) => {
+        return new Promise((resolve, reject) => {
             image.formData = {};
             image.submit()
-                .success(function (response) {
+                .success((response) => {
+                    let usersUrl = this.get('ghostPaths.url').api('users', user.id.toString());
                     user.image = response;
-                    ajax({
-                        url: this.get('ghostPaths.url').api('users', user.id.toString()),
-                        type: 'PUT',
+                    this.get('ajax').put(usersUrl, {
                         data: {
                             users: [user]
                         }
@@ -51,8 +55,9 @@ export default Controller.extend(ValidationEngine, {
 
     _handleSaveError(resp) {
         this.toggleProperty('submitting');
-        if (resp && resp.jqXHR && resp.jqXHR.responseJSON && resp.jqXHR.responseJSON.errors) {
-            this.set('flowErrors', resp.jqXHR.responseJSON.errors[0].message);
+
+        if (resp && resp.errors && isArray(resp.errors)) {
+            this.set('flowErrors', resp.errors[0].message);
         } else {
             this.get('notifications').showAPIError(resp, {key: 'setup.blog-details'});
         }
@@ -68,6 +73,22 @@ export default Controller.extend(ValidationEngine, {
         }
     },
 
+    afterAuthentication(result) {
+        if (this.get('image')) {
+            this.sendImage(result.users[0])
+            .then(() => {
+                this.toggleProperty('submitting');
+                this.transitionToRoute('setup.three');
+            }).catch((resp) => {
+                this.toggleProperty('submitting');
+                this.get('notifications').showAPIError(resp, {key: 'setup.blog-details'});
+            });
+        } else {
+            this.toggleProperty('submitting');
+            this.transitionToRoute('setup.three');
+        }
+    },
+
     actions: {
         preValidate(model) {
             // Only triggers validation if a value has been entered, preventing empty errors on focusOut
@@ -77,20 +98,18 @@ export default Controller.extend(ValidationEngine, {
         },
 
         setup() {
-            let setupProperties = ['blogTitle', 'name', 'email', 'password', 'image'];
+            let setupProperties = ['blogTitle', 'name', 'email', 'password'];
             let data = this.getProperties(setupProperties);
-            let notifications = this.get('notifications');
             let config = this.get('config');
-            let method = this.get('blogCreated') ? 'PUT' : 'POST';
+            let method = this.get('blogCreated') ? 'put' : 'post';
 
             this.toggleProperty('submitting');
             this.set('flowErrors', '');
 
             this.get('hasValidated').addObjects(setupProperties);
             this.validate().then(() => {
-                ajax({
-                    url: this.get('ghostPaths.url').api('authentication', 'setup'),
-                    type: method,
+                let authUrl = this.get('ghostPaths.url').api('authentication', 'setup');
+                this.get('ajax')[method](authUrl, {
                     data: {
                         setup: [{
                             name: data.name,
@@ -101,25 +120,21 @@ export default Controller.extend(ValidationEngine, {
                     }
                 }).then((result) => {
                     config.set('blogTitle', data.blogTitle);
+
+                    // don't try to login again if we are already logged in
+                    if (this.get('session.isAuthenticated')) {
+                        return this.afterAuthentication(result);
+                    }
+
                     // Don't call the success handler, otherwise we will be redirected to admin
-                    this.get('application').set('skipAuthSuccessHandler', true);
+                    this.set('session.skipAuthSuccessHandler', true);
                     this.get('session').authenticate('authenticator:oauth2', this.get('email'), this.get('password')).then(() => {
                         this.set('blogCreated', true);
-                        if (data.image) {
-                            this.sendImage(result.users[0])
-                            .then(() => {
-                                this.toggleProperty('submitting');
-                                this.transitionToRoute('setup.three');
-                            }).catch((resp) => {
-                                this.toggleProperty('submitting');
-                                notifications.showAPIError(resp, {key: 'setup.blog-details'});
-                            });
-                        } else {
-                            this.toggleProperty('submitting');
-                            this.transitionToRoute('setup.three');
-                        }
+                        return this.afterAuthentication(result);
                     }).catch((error) => {
                         this._handleAuthenticationError(error);
+                    }).finally(() => {
+                        this.set('session.skipAuthSuccessHandler', undefined);
                     });
                 }).catch((error) => {
                     this._handleSaveError(error);

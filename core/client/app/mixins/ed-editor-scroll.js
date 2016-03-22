@@ -1,5 +1,4 @@
 import Ember from 'ember';
-import setScrollClassName from 'ghost/utils/set-scroll-classname';
 
 const {Mixin, run} = Ember;
 
@@ -62,7 +61,7 @@ export default Mixin.create({
      */
     scrollHandler() {
         this.set('scrollThrottle', run.throttle(this, () => {
-            this.sendAction('updateScrollInfo', this.getScrollInfo());
+            this.attrs.updateScrollInfo(this.getScrollInfo());
         }, 10));
     },
 
@@ -75,10 +74,6 @@ export default Mixin.create({
         $el.on('keypress', run.bind(this, this.adjustScrollPosition));
 
         $el.on('scroll', run.bind(this, this.scrollHandler));
-        $el.on('scroll', run.bind($el, setScrollClassName, {
-            target: Ember.$('.js-entry-markdown'),
-            offset: 10
-        }));
     },
 
     /**

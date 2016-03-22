@@ -5,6 +5,7 @@ var _      = require('lodash'),
     api    = require('../api'),
     config = require('../config'),
     errors = require('../errors'),
+    i18n   = require('../i18n'),
     themeHandler;
 
 themeHandler = {
@@ -25,14 +26,17 @@ themeHandler = {
     // ### configHbsForContext Middleware
     // Setup handlebars for the current context (admin or theme)
     configHbsForContext: function configHbsForContext(req, res, next) {
-        var themeData = config.theme,
+        var themeData = _.cloneDeep(config.theme),
             blogApp = req.app;
 
         if (req.secure && config.urlSSL) {
             // For secure requests override .url property with the SSL version
-            themeData = _.clone(themeData);
             themeData.url = config.urlSSL.replace(/\/$/, '');
         }
+
+        // Change camelCase to snake_case
+        themeData.posts_per_page = themeData.postsPerPage;
+        delete themeData.postsPerPage;
 
         hbs.updateTemplateOptions({data: {blog: themeData}});
 
@@ -96,14 +100,14 @@ themeHandler = {
                 if (!config.paths.availableThemes.hasOwnProperty(activeTheme.value)) {
                     if (!res.isAdmin) {
                         // Throw an error if the theme is not available, but not on the admin UI
-                        return errors.throwError('The currently active theme "' + activeTheme.value + '" is missing.');
+                        return errors.throwError(i18n.t('errors.middleware.themehandler.missingTheme', {theme: activeTheme.value}));
                     } else {
                         // At this point the activated theme is not present and the current
                         // request is for the admin client.  In order to allow the user access
                         // to the admin client we set an hbs instance on the app so that middleware
                         // processing can continue.
                         blogApp.engine('hbs', hbs.express3());
-                        errors.logWarn('The currently active theme "' + activeTheme.value + '" is missing.');
+                        errors.logWarn(i18n.t('errors.middleware.themehandler.missingTheme', {theme: activeTheme.value}));
 
                         return next();
                     }

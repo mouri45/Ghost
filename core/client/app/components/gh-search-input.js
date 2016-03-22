@@ -1,9 +1,15 @@
 /* global key */
 /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
 import Ember from 'ember';
-import {request as ajax} from 'ic-ajax';
 
-const {$, Component, RSVP, computed, inject, observer} = Ember;
+const {
+    $,
+    Component,
+    RSVP,
+    computed,
+    inject: {service},
+    observer
+} = Ember;
 const {filterBy} = computed;
 
 export default Component.extend({
@@ -19,8 +25,9 @@ export default Component.extend({
     users: filterBy('content', 'category', 'Users'),
     tags:  filterBy('content', 'category', 'Tags'),
 
-    _store: inject.service('store'),
-    _routing: inject.service('-routing'),
+    _store: service('store'),
+    _routing: service('-routing'),
+    ajax: service(),
 
     _selectize: computed(function () {
         return this.$('select')[0].selectize;
@@ -37,6 +44,7 @@ export default Component.extend({
         }
 
         this.set('isLoading', true);
+        this.set('content', []);
         promises.pushObject(this._loadPosts());
         promises.pushObject(this._loadUsers());
         promises.pushObject(this._loadTags());
@@ -53,9 +61,7 @@ export default Component.extend({
         let postsQuery = {fields: 'id,title,page', limit: 'all', status: 'all', staticPages: 'all'};
         let content = this.get('content');
 
-        return ajax(postsUrl, {data: postsQuery}).then((posts) => {
-            content.removeObjects(this.get('posts'));
-            content.removeObjects(this.get('pages'));
+        return this.get('ajax').request(postsUrl, {data: postsQuery}).then((posts) => {
             content.pushObjects(posts.posts.map((post) => {
                 return {
                     id: `post.${post.id}`,
@@ -72,8 +78,7 @@ export default Component.extend({
         let usersQuery = {fields: 'name,slug', limit: 'all'};
         let content = this.get('content');
 
-        return ajax(usersUrl, {data: usersQuery}).then((users) => {
-            content.removeObjects(this.get('users'));
+        return this.get('ajax').request(usersUrl, {data: usersQuery}).then((users) => {
             content.pushObjects(users.users.map((user) => {
                 return {
                     id: `user.${user.slug}`,
@@ -90,8 +95,7 @@ export default Component.extend({
         let tagsQuery = {fields: 'name,slug', limit: 'all'};
         let content = this.get('content');
 
-        return ajax(tagsUrl, {data: tagsQuery}).then((tags) => {
-            content.removeObjects(this.get('tags'));
+        return this.get('ajax').request(tagsUrl, {data: tagsQuery}).then((tags) => {
             content.pushObjects(tags.tags.map((tag) => {
                 return {
                     id: `tag.${tag.slug}`,

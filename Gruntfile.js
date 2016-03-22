@@ -8,11 +8,11 @@
 var _              = require('lodash'),
     chalk          = require('chalk'),
     fs             = require('fs-extra'),
+    https          = require('https'),
     moment         = require('moment'),
     getTopContribs = require('top-gh-contribs'),
     path           = require('path'),
     Promise        = require('bluebird'),
-    request        = require('request'),
 
     escapeChar     = process.platform.match(/^win/) ? '^' : '\\',
     cwd            = process.cwd().replace(/( |\(|\))/g, escapeChar + '$1'),
@@ -194,6 +194,10 @@ var _              = require('lodash'),
 
                 helpers: {
                     src: ['core/test/unit/server_helpers/*_spec.js']
+                },
+
+                metadata: {
+                    src: ['core/test/unit/metadata/*_spec.js']
                 },
 
                 middleware: {
@@ -416,6 +420,17 @@ var _              = require('lodash'),
                 default: {
                     options: {
                         params: '--init'
+                    }
+                }
+            },
+
+            uglify: {
+                prod: {
+                    options: {
+                        sourceMap: false
+                    },
+                    files: {
+                        'core/shared/ghost-url.min.js': 'core/shared/ghost-url.js'
                     }
                 }
             }
@@ -819,15 +834,20 @@ var _              = require('lodash'),
             ).then(function (results) {
                 var contributors = results[1],
                     contributorTemplate = '<article>\n    <a href="<%githubUrl%>" title="<%name%>">\n' +
-                    '        <img src="{{gh-path "admin" "/img/contributors"}}/<%name%>" alt="<%name%>" />\n' +
-                    '    </a>\n</article>',
+                        '        <img src="{{gh-path "admin" "/img/contributors"}}/<%name%>" alt="<%name%>" />\n' +
+                        '    </a>\n</article>',
 
                     downloadImagePromise = function (url, name) {
                         return new Promise(function (resolve, reject) {
-                            request(url)
-                            .pipe(fs.createWriteStream(imagePath + name))
-                            .on('close', resolve)
-                            .on('error', reject);
+                            var file = fs.createWriteStream(path.join(__dirname, imagePath, name));
+                            https.get(url, function (response) {
+                                    response.pipe(file);
+                                    file.on('finish', function () {
+                                        file.close();
+                                        resolve();
+                                    });
+                                })
+                                .on('error', reject);
                         });
                     };
 
@@ -909,7 +929,7 @@ var _              = require('lodash'),
         //
         // It is otherwise the same as running `grunt`, but is only used when running Ghost in the `production` env.
         grunt.registerTask('prod', 'Build JS & templates for production',
-            ['shell:ember:prod', 'master-warn']);
+            ['shell:ember:prod', 'uglify:prod']);
 
         // ### Live reload
         // `grunt dev` - build assets on the fly whilst developing
@@ -949,7 +969,7 @@ var _              = require('lodash'),
                     dest: '<%= paths.releaseBuild %>/'
                 });
 
-                grunt.task.run(['init', 'shell:ember:prod', 'clean:release',  'shell:dedupe', 'shell:shrinkwrap', 'copy:release', 'compress:release']);
+                grunt.task.run(['init', 'prod', 'clean:release',  'shell:dedupe', 'shell:shrinkwrap', 'copy:release', 'compress:release']);
             }
         );
     };

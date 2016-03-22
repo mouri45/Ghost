@@ -1,5 +1,7 @@
-var _   = require('lodash'),
-    gql = require('ghost-gql'),
+var _      = require('lodash'),
+    errors = require('../../errors'),
+    gql    = require('ghost-gql'),
+    i18n   = require('../../i18n'),
     filter,
     filterUtils;
 
@@ -16,11 +18,19 @@ filterUtils = {
         custom = Array.prototype.slice.call(arguments, 2);
 
         // Ensure everything has been run through the gql parser
-        enforced = enforced ? (_.isString(enforced) ? gql.parse(enforced) : enforced) : null;
-        defaults = defaults ? (_.isString(defaults) ? gql.parse(defaults) : defaults) : null;
-        custom = _.map(custom, function (arg) {
-            return _.isString(arg) ? gql.parse(arg) : arg;
-        });
+        try {
+            enforced = enforced ? (_.isString(enforced) ? gql.parse(enforced) : enforced) : null;
+            defaults = defaults ? (_.isString(defaults) ? gql.parse(defaults) : defaults) : null;
+            custom = _.map(custom, function (arg) {
+                return _.isString(arg) ? gql.parse(arg) : arg;
+            });
+        } catch (error) {
+            errors.logAndThrowError(
+                new errors.ValidationError(error.message, 'filter'),
+                i18n.t('errors.models.plugins.filter.errorParsing'),
+                i18n.t('errors.models.plugins.filter.forInformationRead', {url: 'http://api.ghost.org/docs/filter'})
+            );
+        }
 
         // Merge custom filter options into a single set of statements
         custom = gql.json.mergeStatements.apply(this, custom);

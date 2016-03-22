@@ -1,10 +1,11 @@
-/*globals describe, before, after, afterEach, beforeEach, it*/
-/*jshint expr:true*/
+/*globals describe, before, afterEach, beforeEach, it*/
 var should         = require('should'),
     sinon          = require('sinon'),
+    _              = require('lodash'),
     Promise        = require('bluebird'),
     hbs            = require('express-hbs'),
     utils          = require('./utils'),
+    configUtils    = require('../../utils/configUtils'),
     moment         = require('moment'),
 
 // Stuff we are testing
@@ -25,9 +26,7 @@ describe('{{ghost_head}} helper', function () {
 
     afterEach(function () {
         sandbox.restore();
-    });
-    after(function () {
-        utils.restoreConfig();
+        configUtils.restore();
     });
 
     beforeEach(function () {
@@ -46,14 +45,9 @@ describe('{{ghost_head}} helper', function () {
         sandbox.stub(labs, 'isSet').returns(true);
     });
 
-    function expectGhostClientMeta(rendered) {
-        rendered.string.should.match(/<meta property="ghost:client_id" content="ghost-frontend" \/>/);
-        rendered.string.should.match(/<meta property="ghost:client_secret" content="[a-f0-9]{12}" \/>/);
-    }
-
     describe('without Code Injection', function () {
-        before(function () {
-            utils.overrideConfig({
+        beforeEach(function () {
+            configUtils.set({
                 url: 'http://testurl.com/',
                 theme: {
                     title: 'Ghost',
@@ -73,7 +67,6 @@ describe('{{ghost_head}} helper', function () {
                 {data: {root: {context: ['paged', 'index']}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/page\/2\/" \/>/);
                 rendered.string.should.match(/<meta name="generator" content="Ghost 0.3" \/>/);
                 rendered.string.should.match(/<link rel="alternate" type="application\/rss\+xml" title="Ghost" href="http:\/\/testurl.com\/rss\/" \/>/);
@@ -90,7 +83,6 @@ describe('{{ghost_head}} helper', function () {
                 {data: {root: {context: ['home', 'index']}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/" \/>/);
                 rendered.string.should.match(/<meta name="referrer" content="origin" \/>/);
                 rendered.string.should.match(/<meta property="og:site_name" content="Ghost" \/>/);
@@ -131,7 +123,6 @@ describe('{{ghost_head}} helper', function () {
                 {data: {root: {context: ['tag']}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/tag\/tagtitle\/" \/>/);
                 rendered.string.should.match(/<meta property="og:site_name" content="Ghost" \/>/);
                 rendered.string.should.match(/<meta property="og:type" content="website" \/>/);
@@ -173,7 +164,6 @@ describe('{{ghost_head}} helper', function () {
                 {data: {root: {context: ['tag']}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/tag\/tagtitle\/" \/>/);
                 rendered.string.should.match(/<meta property="og:site_name" content="Ghost" \/>/);
                 rendered.string.should.match(/<meta property="og:type" content="website" \/>/);
@@ -213,14 +203,13 @@ describe('{{ghost_head}} helper', function () {
                 {safeVersion: '0.3', relativeUrl: '/tag/tagtitle/', tag: tag, context: ['tag']},
                 {data: {root: {context: ['tag']}}}
             ).then(function (rendered) {
-                    should.exist(rendered);
-                    expectGhostClientMeta(rendered);
-                    rendered.string.should.not.match(/<meta property="og:description" \/>/);
-                    rendered.string.should.not.match(/<meta name="twitter:description"\/>/);
-                    rendered.string.should.not.match(/"description":/);
+                should.exist(rendered);
+                rendered.string.should.not.match(/<meta property="og:description" \/>/);
+                rendered.string.should.not.match(/<meta name="twitter:description"\/>/);
+                rendered.string.should.not.match(/"description":/);
 
-                    done();
-                }).catch(done);
+                done();
+            }).catch(done);
         });
 
         it('does not return structured data on paginated tag pages', function (done) {
@@ -236,7 +225,6 @@ describe('{{ghost_head}} helper', function () {
                 {data: {root: {context: ['tag']}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/tag\/tagtitle\/page\/2\/" \/>/);
                 rendered.string.should.match(/<meta name="generator" content="Ghost 0.3" \/>/);
                 rendered.string.should.match(/<link rel="alternate" type="application\/rss\+xml" title="Ghost" href="http:\/\/testurl.com\/rss\/" \/>/);
@@ -255,14 +243,13 @@ describe('{{ghost_head}} helper', function () {
                 image: '/content/images/test-author-image.png',
                 cover: '/content/images/author-cover-image.png',
                 website: 'http://authorwebsite.com'
-            };
+            }, authorBk = _.cloneDeep(author);
 
             helpers.ghost_head.call(
                 {safeVersion: '0.3', relativeUrl: '/author/AuthorName/', author: author, context: ['author']},
                 {data: {root: {context: ['author']}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/author\/AuthorName\/" \/>/);
                 rendered.string.should.match(/<meta property="og:site_name" content="Ghost" \/>/);
                 rendered.string.should.match(/<meta property="og:type" content="profile" \/>/);
@@ -281,10 +268,12 @@ describe('{{ghost_head}} helper', function () {
                 rendered.string.should.match(/"@type": "Person"/);
                 rendered.string.should.match(/"sameAs": "http:\/\/authorwebsite.com"/);
                 rendered.string.should.match(/"publisher": "Ghost"/);
-                rendered.string.should.match(/"url": "http:\/\/testurl.com\/author\/AuthorName"/);
+                rendered.string.should.match(/"url": "http:\/\/testurl.com\/author\/AuthorName\/"/);
                 rendered.string.should.match(/"image": "http:\/\/testurl.com\/content\/images\/author-cover-image.png"/);
                 rendered.string.should.match(/"name": "Author name"/);
                 rendered.string.should.match(/"description": "Author bio"/);
+
+                author.should.eql(authorBk);
 
                 done();
             }).catch(done);
@@ -305,7 +294,6 @@ describe('{{ghost_head}} helper', function () {
                 {data: {root: {context: ['paged', 'author']}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/author\/AuthorName\/page\/2\/" \/>/);
                 rendered.string.should.match(/<meta name="generator" content="Ghost 0.3" \/>/);
                 rendered.string.should.match(/<link rel="alternate" type="application\/rss\+xml" title="Ghost" href="http:\/\/testurl.com\/rss\/" \/>/);
@@ -345,7 +333,7 @@ describe('{{ghost_head}} helper', function () {
                     website: 'http://authorwebsite.com',
                     bio: 'Author bio'
                 }
-            };
+            }, postBk = _.cloneDeep(post);
 
             helpers.ghost_head.call(
                 {relativeUrl: '/post/', safeVersion: '0.3', context: ['post'], post: post},
@@ -357,7 +345,6 @@ describe('{{ghost_head}} helper', function () {
                     re4 = new RegExp('"dateModified": "' + post.updated_at);
 
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/post\/" \/>/);
                 rendered.string.should.match(/<meta property="og:site_name" content="Ghost" \/>/);
                 rendered.string.should.match(/<meta property="og:type" content="article" \/>/);
@@ -383,7 +370,7 @@ describe('{{ghost_head}} helper', function () {
                 rendered.string.should.match(/"@type": "Person"/);
                 rendered.string.should.match(/"name": "Author name"/);
                 rendered.string.should.match(/"image\": \"http:\/\/testurl.com\/content\/images\/test-author-image.png\"/);
-                rendered.string.should.match(/"url": "http:\/\/testurl.com\/author\/Author"/);
+                rendered.string.should.match(/"url": "http:\/\/testurl.com\/author\/Author\/"/);
                 rendered.string.should.match(/"sameAs": "http:\/\/authorwebsite.com"/);
                 rendered.string.should.match(/"description": "Author bio"/);
                 rendered.string.should.match(/"headline": "Welcome to Ghost"/);
@@ -396,6 +383,8 @@ describe('{{ghost_head}} helper', function () {
                 rendered.string.should.match(/"@context": "http:\/\/schema.org"/);
                 rendered.string.should.match(/<meta name="generator" content="Ghost 0.3" \/>/);
                 rendered.string.should.match(/<link rel="alternate" type="application\/rss\+xml" title="Ghost" href="http:\/\/testurl.com\/rss\/" \/>/);
+
+                post.should.eql(postBk);
 
                 done();
             }).catch(done);
@@ -429,7 +418,6 @@ describe('{{ghost_head}} helper', function () {
                     re4 = new RegExp('"dateModified": "' + post.updated_at);
 
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/post\/" \/>/);
                 rendered.string.should.match(/<meta property="og:site_name" content="Ghost" \/>/);
                 rendered.string.should.match(/<meta property="og:type" content="article" \/>/);
@@ -455,7 +443,7 @@ describe('{{ghost_head}} helper', function () {
                 rendered.string.should.match(/"@type": "Person"/);
                 rendered.string.should.match(/"name": "Author name"/);
                 rendered.string.should.match(/"image\": \"http:\/\/testurl.com\/content\/images\/test-author-image.png\"/);
-                rendered.string.should.match(/"url": "http:\/\/testurl.com\/author\/Author"/);
+                rendered.string.should.match(/"url": "http:\/\/testurl.com\/author\/Author\/"/);
                 rendered.string.should.match(/"sameAs": "http:\/\/authorwebsite.com"/);
                 rendered.string.should.match(/"headline": "Welcome to Ghost &quot;test&quot;"/);
                 rendered.string.should.match(/"url": "http:\/\/testurl.com\/post\/"/);
@@ -499,7 +487,6 @@ describe('{{ghost_head}} helper', function () {
                     re4 = new RegExp('"dateModified": "' + post.updated_at);
 
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/post\/" \/>/);
                 rendered.string.should.match(/<meta property="og:site_name" content="Ghost" \/>/);
                 rendered.string.should.match(/<meta property="og:type" content="article" \/>/);
@@ -523,7 +510,7 @@ describe('{{ghost_head}} helper', function () {
                 rendered.string.should.match(/"@type": "Person"/);
                 rendered.string.should.match(/"name": "Author name"/);
                 rendered.string.should.match(/"image\": \"http:\/\/testurl.com\/content\/images\/test-author-image.png\"/);
-                rendered.string.should.match(/"url": "http:\/\/testurl.com\/author\/Author"/);
+                rendered.string.should.match(/"url": "http:\/\/testurl.com\/author\/Author\/"/);
                 rendered.string.should.match(/"sameAs": "http:\/\/authorwebsite.com"/);
                 rendered.string.should.match(/"headline": "Welcome to Ghost"/);
                 rendered.string.should.match(/"url": "http:\/\/testurl.com\/post\/"/);
@@ -568,7 +555,6 @@ describe('{{ghost_head}} helper', function () {
                     re4 = new RegExp('"dateModified": "' + post.updated_at);
 
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/post\/" \/>/);
                 rendered.string.should.match(/<meta property="og:site_name" content="Ghost" \/>/);
                 rendered.string.should.match(/<meta property="og:type" content="article" \/>/);
@@ -594,7 +580,7 @@ describe('{{ghost_head}} helper', function () {
                 rendered.string.should.match(/"@type": "Person"/);
                 rendered.string.should.match(/"name": "Author name"/);
                 rendered.string.should.not.match(/"image\"/);
-                rendered.string.should.match(/"url": "http:\/\/testurl.com\/author\/Author"/);
+                rendered.string.should.match(/"url": "http:\/\/testurl.com\/author\/Author\/"/);
                 rendered.string.should.match(/"sameAs": "http:\/\/authorwebsite.com"/);
                 rendered.string.should.match(/"headline": "Welcome to Ghost"/);
                 rendered.string.should.match(/"url": "http:\/\/testurl.com\/post\/"/);
@@ -609,13 +595,33 @@ describe('{{ghost_head}} helper', function () {
             }).catch(done);
         });
 
+        it('returns twitter and facebook descriptions if no meta description available', function (done) {
+            var post = {
+                title: 'Welcome to Ghost',
+                html: '<p>This is a short post</p>',
+                author: {
+                    name: 'Author name'
+                }
+            };
+
+            helpers.ghost_head.call(
+                {relativeUrl: '/post/', safeVersion: '0.3', context: ['post'], post: post},
+                {data: {root: {context: ['post']}}}
+            ).then(function (rendered) {
+                should.exist(rendered);
+                rendered.string.should.match(/<meta property="og:description" content="This is a short post" \/>/);
+                rendered.string.should.match(/<meta name="twitter:description" content="This is a short post" \/>/);
+
+                done();
+            }).catch(done);
+        });
+
         it('returns canonical URL', function (done) {
             helpers.ghost_head.call(
                 {safeVersion: '0.3', relativeUrl: '/about/', context: ['page']},
                 {data: {root: {context: ['page']}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/about\/" \/>/);
                 rendered.string.should.match(/<meta name="generator" content="Ghost 0.3" \/>/);
                 rendered.string.should.match(/<link rel="alternate" type="application\/rss\+xml" title="Ghost" href="http:\/\/testurl.com\/rss\/" \/>/);
@@ -632,7 +638,6 @@ describe('{{ghost_head}} helper', function () {
                 {data: {root: {context: ['index', 'paged'], pagination: {total: 4, page: 3, next: 4, prev: 2}}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/page\/3\/" \/>/);
                 rendered.string.should.match(/<meta name="generator" content="Ghost 0.3" \/>/);
                 rendered.string.should.match(/<link rel="prev" href="http:\/\/testurl.com\/page\/2\/" \/>/);
@@ -651,7 +656,6 @@ describe('{{ghost_head}} helper', function () {
                 {data: {root: {context: ['index', 'paged'], pagination: {total: 3, page: 2, next: 3, prev: 1}}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/page\/2\/" \/>/);
                 rendered.string.should.match(/<meta name="generator" content="Ghost 0.3" \/>/);
                 rendered.string.should.match(/<link rel="prev" href="http:\/\/testurl.com\/" \/>/);
@@ -665,8 +669,8 @@ describe('{{ghost_head}} helper', function () {
         });
 
         describe('with /blog subdirectory', function () {
-            before(function () {
-                utils.overrideConfig({
+            beforeEach(function () {
+                configUtils.set({
                     url: 'http://testurl.com/blog/',
                     theme: {
                         title: 'Ghost',
@@ -676,17 +680,12 @@ describe('{{ghost_head}} helper', function () {
                 });
             });
 
-            after(function () {
-                utils.restoreConfig();
-            });
-
             it('returns correct rss url with subdirectory', function (done) {
                 helpers.ghost_head.call(
                     {safeVersion: '0.3', context: ['paged', 'index']},
                     {data: {root: {context: []}}}
                 ).then(function (rendered) {
                     should.exist(rendered);
-                    expectGhostClientMeta(rendered);
                     rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/blog\/" \/>/);
                     rendered.string.should.match(/<meta name="generator" content="Ghost 0.3" \/>/);
                     rendered.string.should.match(/<link rel="alternate" type="application\/rss\+xml" title="Ghost" href="http:\/\/testurl.com\/blog\/rss\/" \/>/);
@@ -698,8 +697,8 @@ describe('{{ghost_head}} helper', function () {
     });
 
     describe('with useStructuredData is set to false in config file', function () {
-        before(function () {
-            utils.overrideConfig({
+        beforeEach(function () {
+            configUtils.set({
                 url: 'http://testurl.com/',
                 theme: {
                     title: 'Ghost',
@@ -734,7 +733,6 @@ describe('{{ghost_head}} helper', function () {
                 {data: {root: {context: ['post']}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/post\/" \/>/);
                 rendered.string.should.match(/<meta name="generator" content="Ghost 0.3" \/>/);
                 rendered.string.should.match(/<link rel="alternate" type="application\/rss\+xml" title="Ghost" href="http:\/\/testurl.com\/rss\/" \/>/);
@@ -752,7 +750,7 @@ describe('{{ghost_head}} helper', function () {
                 settings: [{value: '<style>body {background: red;}</style>'}]
             }));
 
-            utils.overrideConfig({
+            configUtils.set({
                 url: 'http://testurl.com/',
                 theme: {
                     title: 'Ghost',
@@ -768,7 +766,6 @@ describe('{{ghost_head}} helper', function () {
                 {data: {root: {context: []}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
                 rendered.string.should.match(/<link rel="canonical" href="http:\/\/testurl.com\/" \/>/);
                 rendered.string.should.match(/<meta name="generator" content="Ghost 0.3" \/>/);
                 rendered.string.should.match(/<link rel="alternate" type="application\/rss\+xml" title="Ghost" href="http:\/\/testurl.com\/rss\/" \/>/);
@@ -780,99 +777,30 @@ describe('{{ghost_head}} helper', function () {
     });
 
     describe('with Ajax Helper', function () {
-        beforeEach(function () {
-            utils.overrideConfig({
-                url: '',
-                urlSSL: '',
-                forceAdminSSL: false
-            });
-        });
-
-        it('renders script tags with basic configuration', function (done) {
+        it('renders script tag with src', function (done) {
             helpers.ghost_head.call(
                 {safeVersion: '0.3', context: ['paged', 'index'], post: false},
                 {data: {root: {context: []}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
-                rendered.string.should.match(/<script type="text\/javascript">\(function \(\) \{/);
-                rendered.string.should.match(/'use strict';/);
-                rendered.string.should.match(/<\/script>/);
+                rendered.string.should.match(/<script type="text\/javascript" src="\/shared\/ghost-url\.js\?v=/);
 
                 done();
             });
         });
 
-        it('renders basic url correctly', function (done) {
-            utils.overrideConfig({
-                url: 'http://testurl.com/'
-            });
-
+        it('renders script tag with init correctly', function (done) {
             helpers.ghost_head.call(
                 {safeVersion: '0.3', context: ['paged', 'index'], post: false},
                 {data: {root: {context: []}}}
             ).then(function (rendered) {
                 should.exist(rendered);
-                expectGhostClientMeta(rendered);
-                rendered.string.should.match(/url: '\/ghost\/api\/v0\.1\/'/);
-                rendered.string.should.match(/useOrigin: 'true'/);
-
-                done();
-            });
-        });
-
-        it('renders basic url correctly with subdirectory', function (done) {
-            utils.overrideConfig({
-                url: 'http://testurl.com/blog/'
-            });
-
-            helpers.ghost_head.call(
-                {safeVersion: '0.3', context: ['paged', 'index'], post: false},
-                {data: {root: {context: []}}}
-            ).then(function (rendered) {
-                should.exist(rendered);
-                expectGhostClientMeta(rendered);
-                rendered.string.should.match(/url: '\/blog\/ghost\/api\/v0\.1\/'/);
-                rendered.string.should.match(/useOrigin: 'true'/);
-
-                done();
-            });
-        });
-
-        it('renders correct https url with forceAdminSSL set', function (done) {
-            utils.overrideConfig({
-                url: 'http://testurl.com/',
-                forceAdminSSL: true
-            });
-
-            helpers.ghost_head.call(
-                {safeVersion: '0.3', context: ['paged', 'index'], post: false},
-                {data: {root: {context: []}}}
-            ).then(function (rendered) {
-                should.exist(rendered);
-                expectGhostClientMeta(rendered);
-                rendered.string.should.match(/url: 'https:\/\/testurl\.com\/ghost\/api\/v0\.1\/'/);
-                rendered.string.should.match(/useOrigin: 'false'/);
-
-                done();
-            });
-        });
-
-        it('renders correct https url if urlSSL is set and forceAdminSSL is also set', function (done) {
-            utils.overrideConfig({
-                url: 'http://testurl.com/',
-                urlSSL: 'https://sslurl.com/',
-                forceAdminSSL: true
-            });
-
-            helpers.ghost_head.call(
-                {safeVersion: '0.3', context: ['paged', 'index'], post: false},
-                {data: {root: {context: []}}}
-            ).then(function (rendered) {
-                should.exist(rendered);
-                expectGhostClientMeta(rendered);
-                rendered.string.should.match(/url: 'https:\/\/sslurl\.com\/ghost\/api\/v0\.1\/'/);
-                rendered.string.should.match(/useOrigin: 'false'/);
+                rendered.string.should.match(/<script type="text\/javascript">\n/);
+                rendered.string.should.match(/ghost\.init\(\{/);
+                rendered.string.should.match(/\tclientId: "/);
+                rendered.string.should.match(/\tclientSecret: "/);
+                rendered.string.should.match(/}\);\n/);
+                rendered.string.should.match(/\n<\/script>/);
 
                 done();
             });

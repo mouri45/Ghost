@@ -1,14 +1,20 @@
 import Ember from 'ember';
 import DS from 'ember-data';
 
-const {Controller, RSVP, computed, inject} = Ember;
+const {
+    Controller,
+    RSVP,
+    computed,
+    inject: {service, controller},
+    run
+} = Ember;
 const {Errors} = DS;
 const {alias} = computed;
 const emberA = Ember.A;
 
 export default Controller.extend({
-    notifications: inject.service(),
-    two: inject.controller('setup/two'),
+    notifications: service(),
+    two: controller('setup/two'),
 
     errors: Errors.create(),
     hasValidated: emberA(),
@@ -131,6 +137,13 @@ export default Controller.extend({
         });
     }),
 
+    _transitionAfterSubmission() {
+        if (!this._hasTransitioned) {
+            this._hasTransitioned = true;
+            this.transitionToRoute('posts.index');
+        }
+    },
+
     actions: {
         validate() {
             this.validate();
@@ -139,10 +152,17 @@ export default Controller.extend({
         invite() {
             let users = this.get('usersArray');
             let notifications = this.get('notifications');
-            let invitationsString;
+            let invitationsString, submissionTimeout;
 
             if (this.validate() && users.length > 0) {
-                this.toggleProperty('submitting');
+                this.set('submitting', true);
+                this._hasTransitioned = false;
+
+                // wait for 4 seconds, otherwise transition anyway
+                submissionTimeout = run.later(this, function () {
+                    this._transitionAfterSubmission();
+                }, 4000);
+
                 this.get('authorRole').then((authorRole) => {
                     RSVP.Promise.all(
                         users.map((user) => {
@@ -169,6 +189,8 @@ export default Controller.extend({
                         let successCount = 0;
                         let message;
 
+                        run.cancel(submissionTimeout);
+
                         invites.forEach((invite) => {
                             if (invite.success) {
                                 successCount++;
@@ -181,6 +203,9 @@ export default Controller.extend({
                             invitationsString = erroredEmails.length > 1 ? ' invitations: ' : ' invitation: ';
                             message = `Failed to send ${erroredEmails.length} ${invitationsString}`;
                             message += erroredEmails.join(', ');
+                            message += ". Please check your email configuration, see <a href=\'http://support.ghost.org/mail\' target=\'_blank\'>http://support.ghost.org/mail</a> for instructions";
+
+                            message = Ember.String.htmlSafe(message);
                             notifications.showAlert(message, {type: 'error', delayed: successCount > 0, key: 'signup.send-invitations.failed'});
                         }
 
@@ -189,9 +214,13 @@ export default Controller.extend({
                             invitationsString = successCount > 1 ? 'invitations' : 'invitation';
                             notifications.showAlert(`${successCount} ${invitationsString} sent!`, {type: 'success', delayed: true, key: 'signup.send-invitations.success'});
                         }
-                        this.send('loadServerNotifications');
-                        this.toggleProperty('submitting');
-                        this.transitionToRoute('posts.index');
+
+                        this.set('submitting', false);
+
+                        run.schedule('actions', this, function () {
+                            this.send('loadServerNotifications');
+                            this._transitionAfterSubmission();
+                        });
                     });
                 });
             } else if (users.length === 0) {

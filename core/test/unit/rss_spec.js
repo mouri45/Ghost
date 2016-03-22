@@ -1,5 +1,4 @@
 /*globals describe, before, beforeEach, afterEach, it*/
-/*jshint expr:true*/
 var should          = require('should'),
     sinon           = require('sinon'),
     rewire          = require('rewire'),
@@ -11,12 +10,9 @@ var should          = require('should'),
 
     // Things that get overridden
     api             = require('../../server/api'),
-    config          = require('../../server/config'),
-    origConfig      = _.cloneDeep(config),
-    rss             = rewire('../../server/data/xml/rss');
+    rss             = rewire('../../server/data/xml/rss'),
 
-// To stop jshint complaining
-should.equal(true, true);
+    configUtils     = require('../utils/configUtils');
 
 // Helper function to prevent unit tests
 // from failing via timeout when they
@@ -48,7 +44,7 @@ describe('RSS', function () {
     afterEach(function () {
         sandbox.restore();
         rss = rewire('../../server/data/xml/rss');
-        config.set(_.merge({}, origConfig));
+        configUtils.restore();
     });
 
     describe('Check XML', function () {
@@ -65,7 +61,7 @@ describe('RSS', function () {
                 set: sinon.stub()
             };
 
-            config.set({url: 'http://my-ghost-blog.com'});
+            configUtils.set({url: 'http://my-ghost-blog.com'});
         });
 
         it('should get the RSS tags correct', function (done) {
@@ -80,7 +76,7 @@ describe('RSS', function () {
 
             res.send = function send(xmlData) {
                 should.exist(xmlData);
-                res.set.calledWith('Content-Type', 'text/xml; charset=UTF-8').should.be.true;
+                res.set.calledWith('Content-Type', 'text/xml; charset=UTF-8').should.be.true();
 
                 // xml & rss tags
                 xmlData.should.match(/^<\?xml version="1.0" encoding="UTF-8"\?>/);
@@ -104,7 +100,7 @@ describe('RSS', function () {
                 done();
             };
 
-            req.channelConfig = channelConfig.index;
+            req.channelConfig = channelConfig.get('index');
             req.channelConfig.isRSS = true;
             rss(req, res, failTest(done));
         });
@@ -146,7 +142,7 @@ describe('RSS', function () {
                 done();
             };
 
-            req.channelConfig = channelConfig.index;
+            req.channelConfig = channelConfig.get('index');
             req.channelConfig.isRSS = true;
             rss(req, res, failTest(done));
         });
@@ -175,7 +171,7 @@ describe('RSS', function () {
                 done();
             };
 
-            req.channelConfig = channelConfig.index;
+            req.channelConfig = channelConfig.get('index');
             req.channelConfig.isRSS = true;
             rss(req, res, failTest(done));
         });
@@ -209,13 +205,13 @@ describe('RSS', function () {
                 done();
             };
 
-            req.channelConfig = channelConfig.index;
+            req.channelConfig = channelConfig.get('index');
             req.channelConfig.isRSS = true;
             rss(req, res, failTest(done));
         });
 
         it('should process urls correctly with subdirectory', function (done) {
-            config.set({url: 'http://my-ghost-blog.com/blog/'});
+            configUtils.set({url: 'http://my-ghost-blog.com/blog/'});
             rss.__set__('getData', function () {
                 return Promise.resolve({
                     title: 'Test Title',
@@ -241,23 +237,15 @@ describe('RSS', function () {
                 done();
             };
 
-            req.channelConfig = channelConfig.index;
+            req.channelConfig = channelConfig.get('index');
             req.channelConfig.isRSS = true;
             rss(req, res, failTest(done));
         });
     });
 
     describe('dataBuilder', function () {
-        var apiSettingsStub, apiBrowseStub, apiTagStub, apiUserStub;
+        var apiBrowseStub, apiTagStub, apiUserStub;
         beforeEach(function () {
-            apiSettingsStub = sandbox.stub(api.settings, 'read');
-            apiSettingsStub.withArgs('permalinks').returns(Promise.resolve({
-                settings: [{
-                    key: 'permalinks',
-                    value: '/:slug/'
-                }]
-            }));
-
             apiBrowseStub = sandbox.stub(api.posts, 'browse', function () {
                 return Promise.resolve({posts: [], meta: {pagination: {pages: 3}}});
             });
@@ -282,22 +270,22 @@ describe('RSS', function () {
                 set: sinon.stub()
             };
 
-            config.set({url: 'http://my-ghost-blog.com', theme: {
+            configUtils.set({url: 'http://my-ghost-blog.com', theme: {
                 title: 'Test',
-                description: 'Some Text'
+                description: 'Some Text',
+                permalinks: '/:slug/'
             }});
         });
 
         it('should process the data correctly for the index feed', function (done) {
             res.send = function send(xmlData) {
-                apiSettingsStub.calledOnce.should.be.true;
-                apiBrowseStub.calledOnce.should.be.true;
-                apiBrowseStub.calledWith({page: 1, include: 'author,tags,fields'}).should.be.true;
+                apiBrowseStub.calledOnce.should.be.true();
+                apiBrowseStub.calledWith({page: 1, include: 'author,tags'}).should.be.true();
                 xmlData.should.match(/<channel><title><!\[CDATA\[Test\]\]><\/title>/);
                 done();
             };
 
-            req.channelConfig = channelConfig.index;
+            req.channelConfig = channelConfig.get('index');
             req.channelConfig.isRSS = true;
             rss(req, res, failTest(done));
         });
@@ -306,15 +294,14 @@ describe('RSS', function () {
             // setup
             req.originalUrl = '/tag/magic/rss/';
             req.params.slug = 'magic';
-            req.channelConfig = channelConfig.tag;
+            req.channelConfig = channelConfig.get('tag');
             req.channelConfig.isRSS = true;
 
             // test
             res.send = function send(xmlData) {
-                apiSettingsStub.calledOnce.should.be.true;
-                apiBrowseStub.calledOnce.should.be.true;
-                apiBrowseStub.calledWith({page: 1, filter: 'tags:magic', include: 'author,tags,fields'}).should.be.true;
-                apiTagStub.calledOnce.should.be.true;
+                apiBrowseStub.calledOnce.should.be.true();
+                apiBrowseStub.calledWith({page: 1, filter: 'tags:\'magic\'', include: 'author,tags'}).should.be.true();
+                apiTagStub.calledOnce.should.be.true();
                 xmlData.should.match(/<channel><title><!\[CDATA\[Magic - Test\]\]><\/title>/);
                 done();
             };
@@ -325,15 +312,14 @@ describe('RSS', function () {
         it('should process the data correctly for an author feed', function (done) {
             req.originalUrl = '/author/joe/rss/';
             req.params.slug = 'joe';
-            req.channelConfig = channelConfig.author;
+            req.channelConfig = channelConfig.get('author');
             req.channelConfig.isRSS = true;
 
             // test
             res.send = function send(xmlData) {
-                apiSettingsStub.calledOnce.should.be.true;
-                apiBrowseStub.calledOnce.should.be.true;
-                apiBrowseStub.calledWith({page: 1, filter: 'author:joe', include: 'author,tags,fields'}).should.be.true;
-                apiUserStub.calledOnce.should.be.true;
+                apiBrowseStub.calledOnce.should.be.true();
+                apiBrowseStub.calledWith({page: 1, filter: 'author:\'joe\'', include: 'author,tags'}).should.be.true();
+                apiUserStub.calledOnce.should.be.true();
                 xmlData.should.match(/<channel><title><!\[CDATA\[Joe Blogs - Test\]\]><\/title>/);
                 done();
             };
@@ -356,7 +342,7 @@ describe('RSS', function () {
                 set: sinon.stub()
             };
 
-            config.set({url: 'http://my-ghost-blog.com'});
+            configUtils.set({url: 'http://my-ghost-blog.com'});
         });
 
         it('should not rebuild xml for same data and url', function (done) {
@@ -369,7 +355,7 @@ describe('RSS', function () {
                     results: {posts: [], meta: {pagination: {pages: 1}}}
                 });
             });
-            req.channelConfig = channelConfig.index;
+            req.channelConfig = channelConfig.get('index');
             req.channelConfig.isRSS = true;
 
             function secondCall() {
@@ -399,7 +385,7 @@ describe('RSS', function () {
         });
     });
 
-    describe('redirects', function () {
+    describe('pagination', function () {
         beforeEach(function () {
             res = {
                 locals: {version: ''},
@@ -417,103 +403,36 @@ describe('RSS', function () {
             });
         });
 
-        it('Redirects to /rss/ if page number is -1', function () {
-            req = {params: {page: -1}, route: {path: '/rss/:page/'}};
-            req.originalUrl = req.route.path.replace(':page', req.params.page);
-            req.channelConfig = channelConfig.index;
-            req.channelConfig.isRSS = true;
-
-            rss(req, res, null);
-
-            res.redirect.called.should.be.true;
-            res.redirect.calledWith('/rss/').should.be.true;
-            res.render.called.should.be.false;
-        });
-
-        it('Redirects to /rss/ if page number is 0', function () {
-            req = {params: {page: 0}, route: {path: '/rss/:page/'}};
-            req.originalUrl = req.route.path.replace(':page', req.params.page);
-            req.channelConfig = channelConfig.index;
-            req.channelConfig.isRSS = true;
-
-            rss(req, res, null);
-
-            res.redirect.called.should.be.true;
-            res.redirect.calledWith('/rss/').should.be.true;
-            res.render.called.should.be.false;
-        });
-
-        it('Redirects to /rss/ if page number is 1', function () {
-            req = {params: {page: 1}, route: {path: '/rss/:page/'}};
-            req.originalUrl = req.route.path.replace(':page', req.params.page);
-            req.channelConfig = channelConfig.index;
-            req.channelConfig.isRSS = true;
-
-            rss(req, res, null);
-
-            res.redirect.called.should.be.true;
-            res.redirect.calledWith('/rss/').should.be.true;
-            res.render.called.should.be.false;
-        });
-
-        it('Redirects to /blog/rss/ if page number is 0 with subdirectory', function () {
-            config.set({url: 'http://testurl.com/blog'});
-
-            req = {params: {page: 0}, route: {path: '/rss/:page/'}};
-            req.originalUrl = req.route.path.replace(':page', req.params.page);
-            req.channelConfig = channelConfig.index;
-            req.channelConfig.isRSS = true;
-
-            rss(req, res, null);
-
-            res.redirect.called.should.be.true;
-            res.redirect.calledWith('/blog/rss/').should.be.true;
-            res.render.called.should.be.false;
-        });
-
-        it('Redirects to /blog/rss/ if page number is 1 with subdirectory', function () {
-            config.set({url: 'http://testurl.com/blog'});
-
-            req = {params: {page: 1}, route: {path: '/rss/:page/'}};
-            req.originalUrl = req.route.path.replace(':page', req.params.page);
-            req.channelConfig = channelConfig.index;
-            req.channelConfig.isRSS = true;
-
-            rss(req, res, null);
-
-            res.redirect.called.should.be.true;
-            res.redirect.calledWith('/blog/rss/').should.be.true;
-            res.render.called.should.be.false;
-        });
-
-        it('Redirects to last page if page number too big', function (done) {
-            config.set({url: 'http://testurl.com/'});
+        it('Should 404 if page number too big', function (done) {
+            configUtils.set({url: 'http://testurl.com/'});
 
             req = {params: {page: 4}, route: {path: '/rss/:page/'}};
             req.originalUrl = req.route.path.replace(':page', req.params.page);
-            req.channelConfig = channelConfig.index;
+            req.channelConfig = channelConfig.get('index');
             req.channelConfig.isRSS = true;
 
-            rss(req, res, failTest(done)).then(function () {
-                res.redirect.called.should.be.true;
-                res.redirect.calledWith('/rss/3/').should.be.true;
-                res.render.called.should.be.false;
+            rss(req, res, function (err) {
+                should.exist(err);
+                err.statusCode.should.eql(404);
+                res.redirect.called.should.be.false();
+                res.render.called.should.be.false();
                 done();
             }).catch(done);
         });
 
         it('Redirects to last page if page number too big with subdirectory', function (done) {
-            config.set({url: 'http://testurl.com/blog'});
+            configUtils.set({url: 'http://testurl.com/blog'});
 
             req = {params: {page: 4}, route: {path: '/rss/:page/'}};
             req.originalUrl = req.route.path.replace(':page', req.params.page);
-            req.channelConfig = channelConfig.index;
+            req.channelConfig = channelConfig.get('index');
             req.channelConfig.isRSS = true;
 
-            rss(req, res, failTest(done)).then(function () {
-                res.redirect.calledOnce.should.be.true;
-                res.redirect.calledWith('/blog/rss/3/').should.be.true;
-                res.render.called.should.be.false;
+            rss(req, res, function (err) {
+                should.exist(err);
+                err.statusCode.should.eql(404);
+                res.redirect.called.should.be.false();
+                res.render.called.should.be.false();
                 done();
             }).catch(done);
         });

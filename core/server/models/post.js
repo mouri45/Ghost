@@ -10,27 +10,9 @@ var _              = require('lodash'),
     events         = require('../events'),
     config         = require('../config'),
     baseUtils      = require('./base/utils'),
-    permalinkSetting = '',
-    getPermalinkSetting,
+    i18n           = require('../i18n'),
     Post,
     Posts;
-
-// Stores model permalink format
-
-getPermalinkSetting = function getPermalinkSetting(model, attributes, options) {
-    /*jshint unused:false*/
-
-    // Transactions are used for bulk deletes and imports which don't need this anyway
-    if (options.transacting) {
-        return Promise.resolve();
-    }
-    return ghostBookshelf.model('Settings').findOne({key: 'permalinks'}).then(function then(response) {
-        if (response) {
-            response = response.toJSON(options);
-            permalinkSetting = response.hasOwnProperty('value') ? response.value : '';
-        }
-    });
-};
 
 Post = ghostBookshelf.Model.extend({
 
@@ -59,10 +41,6 @@ Post = ghostBookshelf.Model.extend({
         this.on('saved', function onSaved(model, response, options) {
             return self.updateTags(model, response, options);
         });
-
-        // Ensures local copy of permalink setting is kept up to date
-        this.on('fetching', getPermalinkSetting);
-        this.on('fetching:collection', getPermalinkSetting);
 
         this.on('created', function onCreated(model) {
             model.emitChange('added');
@@ -139,7 +117,7 @@ Post = ghostBookshelf.Model.extend({
 
         // disabling sanitization until we can implement a better version
         // this.set('title', this.sanitize('title').trim());
-        title = this.get('title') || '(Untitled)';
+        title = this.get('title') || i18n.t('errors.models.post.untitled');
         this.set('title', title.trim());
 
         // ### Business logic for published_at and published_by
@@ -278,11 +256,11 @@ Post = ghostBookshelf.Model.extend({
             }).catch(function failure(error) {
                 errors.logError(
                     error,
-                    'Unable to save tags.',
-                    'Your post was saved, but your tags were not updated.'
+                    i18n.t('errors.models.post.tagUpdates.error'),
+                    i18n.t('errors.models.post.tagUpdates.help')
                 );
                 return Promise.reject(new errors.InternalServerError(
-                    'Unable to save tags. Your post was saved, but your tags were not updated. ' + error
+                    i18n.t('errors.models.post.tagUpdates.error') + ' ' + i18n.t('errors.models.post.tagUpdates.help') + error
                 ));
             });
         }
@@ -324,7 +302,7 @@ Post = ghostBookshelf.Model.extend({
         }
 
         if (!options.columns || (options.columns && options.columns.indexOf('url') > -1)) {
-            attrs.url = config.urlPathForPost(attrs, permalinkSetting);
+            attrs.url = config.urlPathForPost(attrs);
         }
 
         return attrs;
@@ -578,7 +556,7 @@ Post = ghostBookshelf.Model.extend({
                 return Promise.reject(new errors.InternalServerError(error.message || error));
             });
         }
-        return Promise.reject(new errors.NotFoundError('No user found'));
+        return Promise.reject(new errors.NotFoundError(i18n.t('errors.models.post.noUserFound')));
     },
 
     permissible: function permissible(postModelOrId, action, context, loadedPermissions, hasUserPermission, hasAppPermission) {
@@ -609,19 +587,12 @@ Post = ghostBookshelf.Model.extend({
             return Promise.resolve();
         }
 
-        return Promise.reject(new errors.NoPermissionError('You do not have permission to perform this action'));
+        return Promise.reject(new errors.NoPermissionError(i18n.t('errors.models.post.notEnoughPermission')));
     }
 });
 
 Posts = ghostBookshelf.Collection.extend({
-    model: Post,
-
-    initialize: function initialize() {
-        ghostBookshelf.Collection.prototype.initialize.apply(this, arguments);
-
-        // Ensures local copy of permalink setting is kept up to date
-        this.on('fetching', getPermalinkSetting);
-    }
+    model: Post
 });
 
 module.exports = {

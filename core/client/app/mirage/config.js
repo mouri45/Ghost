@@ -1,5 +1,6 @@
 /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
 import Ember from 'ember';
+import Mirage from 'ember-cli-mirage';
 
 const {$, isBlank} = Ember;
 
@@ -62,10 +63,34 @@ export default function () {
         };
     });
 
+    this.post('/authentication/passwordreset', function (db, request) {
+        // jscs:disable requireObjectDestructuring
+        let {passwordreset} = $.deparam(request.requestBody);
+        let email = passwordreset[0].email;
+        // jscs:enable requireObjectDestructuring
+
+        if (email === 'unknown@example.com') {
+            return new Mirage.Response(404, {}, {
+                errors: [
+                    {
+                        message: 'There is no user with that email address.',
+                        errorType: 'NotFoundError'
+                    }
+                ]
+            });
+        } else {
+            return {
+                passwordreset: [
+                    {message: 'Check your email for further instructions.'}
+                ]
+            };
+        }
+    });
+
     /* Download Count ------------------------------------------------------- */
 
     let downloadCount = 0;
-    this.get('http://ghost.org/count/', function () {
+    this.get('https://count.ghost.org/', function () {
         downloadCount++;
         return {
             count: downloadCount
@@ -102,7 +127,16 @@ export default function () {
 
     /* Roles ---------------------------------------------------------------- */
 
-    this.get('/roles/', 'roles');
+    this.get('/roles/', function (db, request) {
+        if (request.queryParams.permissions === 'assign') {
+            let roles = db.roles.find([1,2,3]);
+            return {roles};
+        }
+
+        return {
+            roles: db.roles
+        };
+    });
 
     /* Settings ------------------------------------------------------------- */
 
@@ -125,7 +159,7 @@ export default function () {
     });
 
     this.put('/settings/', function (db, request) {
-        let newSettings = JSON.parse(request.requestBody);
+        let newSettings = JSON.parse(request.requestBody).settings;
 
         db.settings.remove();
         db.settings.insert(newSettings);
@@ -141,7 +175,15 @@ export default function () {
     this.get('/slugs/post/:slug/', function (db, request) {
         return {
             slugs: [
-                {slug: request.params.slug.dasherize}
+                {slug: Ember.String.dasherize(decodeURIComponent(request.params.slug))}
+            ]
+        };
+    });
+
+    this.get('/slugs/user/:slug/', function (db, request) {
+        return {
+            slugs: [
+                {slug: Ember.String.dasherize(decodeURIComponent(request.params.slug))}
             ]
         };
     });
@@ -253,6 +295,22 @@ export default function () {
     });
 
     this.get('/users/', 'users');
+
+    this.get('/users/slug/:slug/', function (db, request) {
+        let user = db.users.where({slug: request.params.slug});
+
+        return {
+            users: user
+        };
+    });
+
+    this.del('/users/:id/', 'user');
+
+    this.get('/users/:id', function (db, request) {
+        return {
+            users: [db.users.find(request.params.id)]
+        };
+    });
 }
 
 /*

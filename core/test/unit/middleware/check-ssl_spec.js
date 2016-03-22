@@ -1,8 +1,7 @@
 /*globals describe, it, beforeEach, afterEach */
-/*jshint expr:true*/
 var sinon    = require('sinon'),
     should   = require('should'),
-    config   = require('../../../server/config'),
+    configUtils = require('../../utils/configUtils'),
     checkSSL = require('../../../server/middleware/check-ssl');
 
 should.equal(true, true);
@@ -15,44 +14,40 @@ describe('checkSSL', function () {
         req = {};
         res = {};
         next = sandbox.spy();
+
+        configUtils.set({
+            url: 'http://default.com:2368/'
+        });
     });
 
     afterEach(function () {
         sandbox.restore();
+        configUtils.restore();
     });
 
     it('should not require SSL (frontend)', function (done) {
         req.url = '/';
-        config.set({
-            url: 'http://default.com:2368/'
-        });
         checkSSL(req, res, next);
-        next.called.should.be.true;
-        next.calledWith().should.be.true;
+        next.called.should.be.true();
+        next.calledWith().should.be.true();
         done();
     });
 
     it('should require SSL (frontend)', function (done) {
         req.url = '/';
         req.secure = true;
-        config.set({
-            url: 'https://default.com:2368/'
-        });
         checkSSL(req, res, next);
-        next.called.should.be.true;
-        next.calledWith().should.be.true;
+        next.called.should.be.true();
+        next.calledWith().should.be.true();
         done();
     });
 
     it('should not require SSL (admin)', function (done) {
         req.url = '/ghost';
         res.isAdmin = true;
-        config.set({
-            url: 'http://default.com:2368/'
-        });
         checkSSL(req, res, next);
-        next.called.should.be.true;
-        next.calledWith().should.be.true;
+        next.called.should.be.true();
+        next.calledWith().should.be.true();
         done();
     });
 
@@ -60,12 +55,10 @@ describe('checkSSL', function () {
         req.url = '/ghost';
         res.isAdmin = true;
         res.secure = true;
-        config.set({
-            url: 'http://default.com:2368/'
-        });
+
         checkSSL(req, res, next);
-        next.called.should.be.true;
-        next.calledWith().should.be.true;
+        next.called.should.be.true();
+        next.calledWith().should.be.true();
         done();
     });
 
@@ -73,13 +66,13 @@ describe('checkSSL', function () {
         req.url = '/ghost';
         res.isAdmin = true;
         req.secure = true;
-        config.set({
+        configUtils.set({
             url: 'http://default.com:2368/',
             forceAdminSSL: true
         });
         checkSSL(req, res, next);
-        next.called.should.be.true;
-        next.calledWith().should.be.true;
+        next.called.should.be.true();
+        next.calledWith().should.be.true();
         done();
     });
 
@@ -88,19 +81,19 @@ describe('checkSSL', function () {
         res.isAdmin = true;
         res.redirect = {};
         req.secure = false;
-        config.set({
+        configUtils.set({
             url: 'http://default.com:2368/',
             urlSSL: '',
             forceAdminSSL: true
         });
         sandbox.stub(res, 'redirect', function (statusCode, url) {
             statusCode.should.eql(301);
-            url.should.not.be.empty;
+            url.should.not.be.empty();
             url.should.eql('https://default.com:2368/ghost/');
             return;
         });
         checkSSL(req, res, next);
-        next.called.should.be.false;
+        next.called.should.be.false();
         done();
     });
 
@@ -109,19 +102,19 @@ describe('checkSSL', function () {
         res.isAdmin = true;
         res.redirect = {};
         req.secure = false;
-        config.set({
+        configUtils.set({
             url: 'http://default.com:2368/blog/',
             urlSSL: '',
             forceAdminSSL: true
         });
         sandbox.stub(res, 'redirect', function (statusCode, url) {
             statusCode.should.eql(301);
-            url.should.not.be.empty;
+            url.should.not.be.empty();
             url.should.eql('https://default.com:2368/blog/ghost/');
             return;
         });
         checkSSL(req, res, next);
-        next.called.should.be.false;
+        next.called.should.be.false();
         done();
     });
 
@@ -133,19 +126,19 @@ describe('checkSSL', function () {
         res.isAdmin = true;
         res.redirect = {};
         req.secure = false;
-        config.set({
+        configUtils.set({
             url: 'http://default.com:2368/',
             urlSSL: '',
             forceAdminSSL: true
         });
         sandbox.stub(res, 'redirect', function (statusCode, url) {
             statusCode.should.eql(301);
-            url.should.not.be.empty;
+            url.should.not.be.empty();
             url.should.eql('https://default.com:2368/ghost/?test=true');
             return;
         });
         checkSSL(req, res, next);
-        next.called.should.be.false;
+        next.called.should.be.false();
         done();
     });
 
@@ -153,19 +146,19 @@ describe('checkSSL', function () {
         req.url = '/';
         req.secure = false;
         res.redirect = {};
-        config.set({
+        configUtils.set({
             url: 'https://default.com:2368',
             urlSSL: '',
             forceAdminSSL: true
         });
         sandbox.stub(res, 'redirect', function (statusCode, url) {
             statusCode.should.eql(301);
-            url.should.not.be.empty;
+            url.should.not.be.empty();
             url.should.eql('https://default.com:2368/');
             return;
         });
         checkSSL(req, res, next);
-        next.called.should.be.false;
+        next.called.should.be.false();
         done();
     });
 
@@ -174,18 +167,19 @@ describe('checkSSL', function () {
         res.isAdmin = true;
         res.redirect = {};
         req.secure = false;
-        config.set({
+        configUtils.set({
             url: 'http://default.com:2368/',
-            urlSSL: 'https://ssl-domain.com:2368/'
+            urlSSL: 'https://ssl-domain.com:2368/',
+            forceAdminSSL: true
         });
         sandbox.stub(res, 'redirect', function (statusCode, url) {
             statusCode.should.eql(301);
-            url.should.not.be.empty;
+            url.should.not.be.empty();
             url.should.eql('https://ssl-domain.com:2368/ghost/');
             return;
         });
         checkSSL(req, res, next);
-        next.called.should.be.false;
+        next.called.should.be.false();
         done();
     });
 
@@ -194,7 +188,7 @@ describe('checkSSL', function () {
         res.isAdmin = true;
         res.sendStatus = {};
         req.secure = false;
-        config.set({
+        configUtils.set({
             url: 'http://default.com:2368/',
             forceAdminSSL: {
                 redirect: false
@@ -205,7 +199,7 @@ describe('checkSSL', function () {
             return;
         });
         checkSSL(req, res, next);
-        next.called.should.be.false;
+        next.called.should.be.false();
         done();
     });
 });

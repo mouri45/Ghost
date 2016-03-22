@@ -1,7 +1,5 @@
 /*globals describe, it, beforeEach, afterEach */
-/*jshint expr:true*/
-var _            = require('lodash'),
-    sinon        = require('sinon'),
+var sinon        = require('sinon'),
     should       = require('should'),
     express      = require('express'),
     Promise      = require('bluebird'),
@@ -11,14 +9,10 @@ var _            = require('lodash'),
     hbs          = require('express-hbs'),
     themeHandler = require('../../../server/middleware/theme-handler'),
     errors       = require('../../../server/errors'),
+    api          = require('../../../server/api'),
 
-    api      = require('../../../server/api'),
-    config   = require('../../../server/config'),
-    origConfig = _.cloneDeep(config),
-    defaultConfig  = require('../../../../config.example')[process.env.NODE_ENV],
-    sandbox = sinon.sandbox.create();
-
-should.equal(true, true);
+    configUtils  = require('../../utils/configUtils'),
+    sandbox      = sinon.sandbox.create();
 
 describe('Theme Handler', function () {
     var req, res, next, blogApp;
@@ -33,9 +27,7 @@ describe('Theme Handler', function () {
 
     afterEach(function () {
         sandbox.restore();
-
-        // Reset config
-        config.set(_.merge({}, origConfig, defaultConfig));
+        configUtils.restore();
     });
 
     describe('ghostLocals', function () {
@@ -44,11 +36,11 @@ describe('Theme Handler', function () {
 
             themeHandler.ghostLocals(req, res, next);
 
-            res.locals.should.be.an.Object;
-            res.locals.version.should.exist;
-            res.locals.safeVersion.should.exist;
+            res.locals.should.be.an.Object();
+            should.exist(res.locals.version);
+            should.exist(res.locals.safeVersion);
             res.locals.relativeUrl.should.equal(req.path);
-            next.called.should.be.true;
+            next.called.should.be.true();
         });
     });
 
@@ -62,10 +54,10 @@ describe('Theme Handler', function () {
 
             themeHandler.activateTheme(blogApp, 'casper');
 
-            errorStub.calledWith('casper').should.be.true;
-            fsStub.calledOnce.should.be.true;
-            hbsStub.calledOnce.should.be.true;
-            hbsStub.firstCall.args[0].should.be.an.Object.and.have.property('partialsDir');
+            errorStub.calledWith('casper').should.be.true();
+            fsStub.calledOnce.should.be.true();
+            hbsStub.calledOnce.should.be.true();
+            hbsStub.firstCall.args[0].should.be.an.Object().and.have.property('partialsDir');
             hbsStub.firstCall.args[0].partialsDir.should.have.lengthOf(2);
             blogApp.get('activeTheme').should.equal('casper');
         });
@@ -79,10 +71,10 @@ describe('Theme Handler', function () {
 
             themeHandler.activateTheme(blogApp, 'casper');
 
-            errorStub.calledWith('casper').should.be.true;
-            fsStub.calledOnce.should.be.true;
-            hbsStub.calledOnce.should.be.true;
-            hbsStub.firstCall.args[0].should.be.an.Object.and.have.property('partialsDir');
+            errorStub.calledWith('casper').should.be.true();
+            fsStub.calledOnce.should.be.true();
+            hbsStub.calledOnce.should.be.true();
+            hbsStub.firstCall.args[0].should.be.an.Object().and.have.property('partialsDir');
             hbsStub.firstCall.args[0].partialsDir.should.have.lengthOf(1);
             blogApp.get('activeTheme').should.equal('casper');
         });
@@ -94,24 +86,24 @@ describe('Theme Handler', function () {
             themeHandler.configHbsForContext(req, res, next);
 
             should.not.exist(res.locals.secure);
-            next.called.should.be.true;
+            next.called.should.be.true();
         });
 
         it('handles secure context', function () {
             var themeOptSpy = sandbox.stub(hbs, 'updateTemplateOptions');
             req.secure = true;
             res.locals = {};
-            config.set({urlSSL: 'https://secure.blog'});
+            configUtils.set({urlSSL: 'https://secure.blog'});
 
             themeHandler.configHbsForContext(req, res, next);
 
-            themeOptSpy.calledOnce.should.be.true;
-            themeOptSpy.firstCall.args[0].should.be.an.Object.and.have.property('data');
-            themeOptSpy.firstCall.args[0].data.should.be.an.Object.and.have.property('blog');
-            themeOptSpy.firstCall.args[0].data.blog.should.be.an.Object.and.have.property('url');
+            themeOptSpy.calledOnce.should.be.true();
+            themeOptSpy.firstCall.args[0].should.be.an.Object().and.have.property('data');
+            themeOptSpy.firstCall.args[0].data.should.be.an.Object().and.have.property('blog');
+            themeOptSpy.firstCall.args[0].data.blog.should.be.an.Object().and.have.property('url');
             themeOptSpy.firstCall.args[0].data.blog.url.should.eql('https://secure.blog');
             res.locals.secure.should.equal(true);
-            next.called.should.be.true;
+            next.called.should.be.true();
         });
 
         it('sets view path', function () {
@@ -121,7 +113,7 @@ describe('Theme Handler', function () {
 
             themeHandler.configHbsForContext(req, res, next);
 
-            blogApp.get('views').should.not.be.undefined;
+            blogApp.get('views').should.not.be.undefined();
         });
 
         it('sets view path', function () {
@@ -131,7 +123,7 @@ describe('Theme Handler', function () {
 
             themeHandler.configHbsForContext(req, res, next);
 
-            blogApp.get('views').should.not.be.undefined;
+            blogApp.get('views').should.not.be.undefined();
         });
     });
 
@@ -145,10 +137,10 @@ describe('Theme Handler', function () {
                 }]
             }));
             blogApp.set('activeTheme', 'not-casper');
-            config.set({paths: {availableThemes: {casper: {}}}});
+            configUtils.set({paths: {availableThemes: {casper: {}}}});
 
             themeHandler.updateActiveTheme(req, res, function () {
-                activateThemeSpy.called.should.be.true;
+                activateThemeSpy.called.should.be.true();
                 done();
             });
         });
@@ -162,10 +154,10 @@ describe('Theme Handler', function () {
                 }]
             }));
             blogApp.set('activeTheme', 'casper');
-            config.set({paths: {availableThemes: {casper: {}}}});
+            configUtils.set({paths: {availableThemes: {casper: {}}}});
 
             themeHandler.updateActiveTheme(req, res, function () {
-                activateThemeSpy.called.should.be.false;
+                activateThemeSpy.called.should.be.false();
                 done();
             });
         });
@@ -181,12 +173,12 @@ describe('Theme Handler', function () {
                 }]
             }));
             blogApp.set('activeTheme', 'not-casper');
-            config.set({paths: {availableThemes: {casper: {}}}});
+            configUtils.set({paths: {availableThemes: {casper: {}}}});
 
             themeHandler.updateActiveTheme(req, res, function (err) {
                 should.exist(err);
-                errorSpy.called.should.be.true;
-                activateThemeSpy.called.should.be.false;
+                errorSpy.called.should.be.true();
+                activateThemeSpy.called.should.be.false();
                 err.message.should.eql('The currently active theme "rasper" is missing.');
                 done();
             });
@@ -205,13 +197,13 @@ describe('Theme Handler', function () {
             }));
             res.isAdmin = true;
             blogApp.set('activeTheme', 'not-casper');
-            config.set({paths: {availableThemes: {casper: {}}}});
+            configUtils.set({paths: {availableThemes: {casper: {}}}});
 
             themeHandler.updateActiveTheme(req, res, function () {
-                errorSpy.called.should.be.false;
-                activateThemeSpy.called.should.be.false;
-                warnSpy.called.should.be.true;
-                warnSpy.calledWith('The currently active theme "rasper" is missing.').should.be.true;
+                errorSpy.called.should.be.false();
+                activateThemeSpy.called.should.be.false();
+                warnSpy.called.should.be.true();
+                warnSpy.calledWith('The currently active theme "rasper" is missing.').should.be.true();
                 done();
             });
         });
